@@ -3,21 +3,46 @@ from mysql.connector import errorcode
 
 try:
     # Connections
-    
+
     # Database connection
+
+    # Nicolau Database
+    #  db = mysql.connector.connect(
+    #      host="localhost",
+    #      user="",
+    #      password="",
+    #      database=""
+    #  )
+    #
+    # # Datawarehouse connection
+    #  dw = mysql.connector.connect(
+    #      host="localhost",
+    #      user="",
+    #      password="",
+    #      database=""
+    #  )
+
+    # Lucas Database
     db = mysql.connector.connect(
         host="localhost",
-        user="",
+        user="lucas",
         password="",
-        database=""
+        database="csgo_stats",
+        charset='utf8',
+        use_unicode=True,
+        connect_timeout=2000,
+        buffered=True
     )
 
-   # Datawarehouse connection
     dw = mysql.connector.connect(
         host="localhost",
-        user="",
+        user="lucas",
         password="",
-        database=""
+        database="csgo_stats_dw",
+        charset='utf8',
+        use_unicode=True,
+        connect_timeout=2000,
+        buffered=True
     )
 except mysql.connector.Error as err:
     if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:

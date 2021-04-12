@@ -4,7 +4,8 @@ import connections as conn
 DEBUG = True
 
 # Maps variable
-maps = [(1, 'Cache'),
+maps = [(0, 0),
+        (1, 'Cache'),
         (2, 'Cobblestone'),
         (3, 'Dust2'),
         (4, 'Inferno'),
@@ -12,8 +13,7 @@ maps = [(1, 'Cache'),
         (6, 'Nuke'),
         (7, 'Overpass'),
         (8, 'Train'),
-        (9, 'Vertigo'),
-        (10, 'Default')]
+        (9, 'Vertigo')]
 
 
 def main():
@@ -72,6 +72,7 @@ def find_map_id(name):
     for instance in maps:
         if instance[1] == name:
             return instance[0]
+    return 0
 
 
 # Auxiliary function to find team id
@@ -230,6 +231,9 @@ def teams_etl():
 
             # Add 1 to the primary key value
             pk += 1
+        query = 'UPDATE teams set name = TRIM(name)'
+        cursor.execute(query)
+        conn.dw.commit()
 
         if DEBUG:
             print('Finished inserting {} values into teams table'.format(len(teams)))
@@ -583,53 +587,90 @@ def vetoes_etl():
         query = 'CREATE TABLE vetoes_fact ( \
                         event_id INT NOT NULL, \
                         match_id INT NOT NULL, \
-                        map_id INT NOT NULL, \
                         team_id INT NOT NULL, \
                         occurred_at DATE NOT NULL, \
-                        PRIMARY KEY (event_id, match_id, map_id, team_id, occurred_at), \
+                        veto_1 INT NOT NULL, \
+                        veto_2 INT NOT NULL, \
+                        veto_3 INT NOT NULL, \
+                        PRIMARY KEY (event_id, match_id, team_id, occurred_at), \
                         CONSTRAINT fk_vetoes_event FOREIGN KEY (event_id) REFERENCES events(id), \
                         CONSTRAINT fk_vetoes_match FOREIGN KEY (match_id) REFERENCES matches(id), \
-                        CONSTRAINT fk_vetoes_map FOREIGN KEY (map_id) REFERENCES maps(id), \
-                        CONSTRAINT fk_vetoes_team FOREIGN KEY (team_id) REFERENCES teams(id))'
+                        CONSTRAINT fk_vetoes_team FOREIGN KEY (team_id) REFERENCES teams(id), \
+                        CONSTRAINT fk_vetoes_veto_1 FOREIGN KEY (veto_1) REFERENCES maps(id), \
+                        CONSTRAINT fk_vetoes_veto_2 FOREIGN KEY (veto_2) REFERENCES maps(id), \
+                        CONSTRAINT fk_vetoes_veto_3 FOREIGN KEY (veto_3) REFERENCES maps(id))'
         cursor.execute(query)
 
         if DEBUG:
-            print("Querying best of one map vetoes...")
+            print("Querying matches vetoes 1/2...")
 
-        cursor = conn.db.cursor(dictionary=True)
-        query = 'SELECT picks.date, picks.match_id, picks.event_id, \
-                    team_1 AS team, \
-                    t1_removed_1 AS veto_1, \
-                    t1_removed_2 AS veto_2, \
-                    t1_removed_3 AS veto_3 \
-                    FROM picks \
-                        INNER JOIN players \
-                        ON picks.event_id = players.event_id \
-                    WHERE picks.best_of = 1'
+        cursor = conn.db.cursor(buffered=True, dictionary=True)
+        query = 'SELECT DISTINCT players.date, players.match_id, players.event_id, \
+                    picks.team_1 AS team, \
+                    picks.t1_removed_1 AS veto_1, \
+                    picks.t1_removed_2 AS veto_2, \
+                    picks.t1_removed_3 AS veto_3 \
+                    FROM players \
+                    INNER JOIN picks \
+                    ON picks.event_id = players.event_id \
+                    AND picks.match_id = players.match_id'
         cursor.execute(query)
         vetoes = cursor.fetchall()
 
         if DEBUG:
-            print("Loading data...")
+            print("Loading data 1/2...")
 
         cursor = conn.dw.cursor()
         for veto in vetoes:
-            veto['team'] = find_team_id(veto['team'])
-            veto['veto_1'] = find_map_id(veto['veto_1'])
-            veto['veto_2'] = find_map_id(veto['veto_2'])
-            veto['veto_3'] = find_map_id(veto['veto_3'])
+            # veto['team_id'] = find_team_id(veto['team'])
+            print(veto['veto_1'])
+            print(find_map_id(veto['veto_1']))
 
-            query = "INSERT INTO vetoes_fact (event_id, match_id, map_id, team_id, occurred_at)" \
-                    "VALUES (%s, %s, %s, %s, %s)"
+
+            query = "INSERT INTO vetoes_fact (event_id, match_id, veto_1, veto_2, veto_3, team_id, occurred_at)" \
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
 
             # Insert and commit map veto 1
-            val = (veto['event_id'], veto['match_id'], veto['veto_1'], veto['team'], veto['date'])
+            val = (veto['event_id'], veto['match_id'], find_map_id(veto['veto_1']), find_map_id(veto['veto_2']), find_map_id(veto['veto_3']), find_team_id(veto['team']), veto['date'])
             cursor.execute(query, val)
             conn.dw.commit()
 
         if DEBUG:
-            print('Finished inserting {} values into vetoes fact table'.format(len(vetoes)))
-            print('Finished loading "best of one" map vetoes with success.')
+            print('Finished inserting {} values into vetoes fact table 1/2'.format(len(vetoes)))
+            print("Querying matches vetoes 2/2...")
+
+        cursor = conn.db.cursor(dictionary=True)
+        query = 'SELECT DISTINCT players.date, players.match_id, players.event_id, \
+                    picks.team_2 AS team, \
+                    picks.t2_removed_1 AS veto_1, \
+                    picks.t2_removed_2 AS veto_2, \
+                    picks.t2_removed_3 AS veto_3 \
+                    FROM players \
+                    INNER JOIN picks \
+                    ON picks.event_id = players.event_id \
+                    AND picks.match_id = players.match_id'
+        cursor.execute(query)
+        vetoes = cursor.fetchall()
+
+        if DEBUG:
+            print("Loading data 2/2...")
+
+        cursor = conn.dw.cursor()
+        for veto in vetoes:
+            # veto['team_id'] = find_team_id(veto['team'])
+
+
+            query = "INSERT INTO vetoes_fact (event_id, match_id, veto_1, veto_2, veto_3, team_id, occurred_at)" \
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+
+            # Insert and commit map veto 1
+            val = (veto['event_id'], veto['match_id'], find_map_id(veto['veto_1']), find_map_id(veto['veto_2']), find_map_id(veto['veto_3']), find_team_id(veto['team']), veto['date'])
+            cursor.execute(query, val)
+            conn.dw.commit()
+
+        if DEBUG:
+            print('Finished inserting {} values into vetoes fact table 2/2'.format(len(vetoes)))
+            print('Finished loading matches vetoes with success.')
 
     else:
         # If a table already exists, drop it and recall function
