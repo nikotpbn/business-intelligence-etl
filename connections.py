@@ -3,18 +3,21 @@ from mysql.connector import errorcode
 
 try:
     # Connections
+    
+    # Database connection
     db = mysql.connector.connect(
         host="localhost",
-        user="root",
-        password="951847",
-        database="cs_go"
+        user="",
+        password="",
+        database=""
     )
 
+   # Datawarehouse connection
     dw = mysql.connector.connect(
         host="localhost",
-        user="root",
-        password="951847",
-        database="cs_go_dw"
+        user="",
+        password="",
+        database=""
     )
 except mysql.connector.Error as err:
     if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
