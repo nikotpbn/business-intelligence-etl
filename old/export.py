@@ -1,11 +1,11 @@
-import connections as conn
+from old import connections as conn
+import time
 
 # Debug variable (for console text)
 DEBUG = True
 
 # Maps variable
-maps = [(0, 0),
-        (1, 'Cache'),
+maps = [(1, 'Cache'),
         (2, 'Cobblestone'),
         (3, 'Dust2'),
         (4, 'Inferno'),
@@ -17,10 +17,16 @@ maps = [(0, 0),
 
 
 def main():
+    #
+
+
+    # Create support tables
+    # create_time_table()
+
     # ETL (Export Transform and Load)
     if DEBUG:
         print("########## MAPS    ETL ##########")
-    # maps_etl()
+    maps_etl()
 
     if DEBUG:
         print("########## EVENTS  ETL ##########")
@@ -40,7 +46,7 @@ def main():
 
     if DEBUG:
         print("######## PERFORMANCE ETL ########")
-    performance_etl()
+    # performance_etl()
 
     if DEBUG:
         print("########## VETOES  ETL ##########")
@@ -86,8 +92,35 @@ def find_team_id(name):
     return instance['id']
 
 
+def create_time_table():
+    cursor = conn.dw.cursor()
+
+    if not table_exists('time'):
+        # Create Table
+        if DEBUG:
+            print('Creating time table')
+
+        query = 'CREATE TABLE time (year INT NOT NULL, \
+                month INT NOT NULL, \
+                day INT NOT NULL, \
+                semester INT, \
+                quarter INT, \
+                PRIMARY KEY (year,month,day))'
+        cursor.execute(query)
+    else:
+        # If a table already exists, drop it and recall function
+        if DEBUG:
+            print("dropping time table and recalling function")
+        query = "DROP TABLE time"
+        cursor.execute(query)
+        create_time_table()
+
+
 # Function to export maps
 def maps_etl():
+    # Save initial time
+    start_time = time.time()
+
     # Fetch data warehouse connection
     cursor = conn.dw.cursor()
 
@@ -115,7 +148,7 @@ def maps_etl():
 
         if DEBUG:
             print("Finished inserting {} values into maps table".format(len(maps)))
-            print('Finished loading maps with success.')
+            print('Finished loading maps with success in: ', round(time.time() - start_time, 2), ' seconds')
     else:
         # If a table already exists, drop it and recall function
         if DEBUG:
@@ -126,6 +159,9 @@ def maps_etl():
 
 
 def events_etl():
+    # Save initial time
+    start_time = time.time()
+
     # Fetch data warehouse connection
     cursor = conn.dw.cursor()
 
@@ -137,9 +173,10 @@ def events_etl():
 
         query = 'CREATE TABLE events (id INT NOT NULL, \
                 name VARCHAR(128) NOT NULL, \
-                start_date DATE NOT NULL, \
+                start_date INT NOT NULL, \
                 end_date DATE NOT NULL, \
-                PRIMARY KEY (id))'
+                PRIMARY KEY (id), \
+                CONSTRAINT fk_event_start_time FOREIGN KEY (start_date) REFERENCES time(year, month, year))'
         cursor.execute(query)
 
         if DEBUG:
@@ -167,10 +204,33 @@ def events_etl():
         cursor = conn.dw.cursor()
         # Iterate through events
         for event in events:
+            # Verify time
+            query = "SELECT year, month, day FROM time, \
+            WHERE \
+            year = event['start_date'].year, \
+            AND month = event['start_date'].month, \
+            AND day = event['start_date'].day"
+            cursor.execute(query)
+            result = cursor.fetchone()
+            if result is None:
+                query = "INSERT INTO time (year, month, day) " \
+                        "VALUES (%s, %s, %s)"
+                val = (event['start_date'].year, event['start_date'].month, event['start_date'].day)
+                cursor.execute(query, val)
+                conn.dw.commit()
+
+                query = "SELECT year, month, day FROM time, \
+                            WHERE \
+                            year = event['start_date'].year, \
+                            AND month = event['start_date'].month, \
+                            AND day = event['start_date'].day"
+                cursor.execute(query)
+                result = cursor.fetchone()
+
             # Query preparation
             query = "INSERT INTO events (id, name, start_date, end_date) " \
                     "VALUES (%s, %s, %s, %s)"
-            val = (event['id'], event['name'], event['start_date'], event['end_date'])
+            val = (event['id'], event['name'], result, event['end_date'])
 
             # Execute and commit
             cursor.execute(query, val)
@@ -178,7 +238,7 @@ def events_etl():
 
         if DEBUG:
             print('Finished inserting {} values into events table'.format(len(events)))
-            print('Finished loading events with success.')
+            print('Finished loading events with success in: ', round(time.time() - start_time, 2), ' seconds')
 
     else:
         # If a table already exists, drop it and recall function
