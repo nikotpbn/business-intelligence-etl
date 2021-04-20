@@ -5,6 +5,13 @@ SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
 -- -----------------------------------------------------
+-- Schema cs_go_bi
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+-- Schema csgo_stats_dw
+-- -----------------------------------------------------
+
+-- -----------------------------------------------------
 -- Schema csgo_stats_dw
 -- -----------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS `csgo_stats_dw` ;
@@ -88,6 +95,7 @@ CREATE TABLE IF NOT EXISTS `csgo_stats_dw`.`time` (
   `semester` INT NULL DEFAULT NULL,
   `quarter` INT NULL DEFAULT NULL,
   `week_of_month` INT NULL DEFAULT NULL,
+  `weekday` INT NULL,
   `weekend` TINYINT NULL,
   PRIMARY KEY (`id`))
 ENGINE = InnoDB
@@ -144,34 +152,42 @@ COLLATE = utf8mb4_0900_ai_ci;
 -- Table `csgo_stats_dw`.`vetoes_fact`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `csgo_stats_dw`.`vetoes_fact` (
-  `id` INT NOT NULL,
-  `time_id` INT NOT NULL,
-  `team_id` INT NOT NULL,
-  `match_id` INT NOT NULL,
   `event_id` INT NOT NULL,
-  `veto` INT NOT NULL,
+  `match_id` INT NOT NULL,
+  `team_id` INT NOT NULL,
+  `de_map_id` INT NOT NULL,
+  `time_id` INT NOT NULL,
   `number` INT NOT NULL,
-  PRIMARY KEY (`id`),
-  INDEX `fk_vetoes_fact_time1_idx` (`time_id` ASC) VISIBLE,
-  INDEX `fk_vetoes_fact_maps1_idx` (`veto` ASC) VISIBLE,
-  INDEX `fk_vetoes_fact_event1_idx` (`event_id` ASC) VISIBLE,
+  PRIMARY KEY (`event_id`, `match_id`, `team_id`, `de_map_id`),
   INDEX `fk_vetoes_fact_match1_idx` (`match_id` ASC) VISIBLE,
   INDEX `fk_vetoes_fact_team1_idx` (`team_id` ASC) VISIBLE,
+  INDEX `fk_vetoes_fact_de_map1_idx` (`de_map_id` ASC) VISIBLE,
+  INDEX `fk_vetoes_fact_time1_idx` (`time_id` ASC) VISIBLE,
   CONSTRAINT `fk_vetoes_fact_event1`
     FOREIGN KEY (`event_id`)
-    REFERENCES `csgo_stats_dw`.`event` (`id`),
-  CONSTRAINT `fk_vetoes_fact_maps1`
-    FOREIGN KEY (`veto`)
-    REFERENCES `csgo_stats_dw`.`de_map` (`id`),
+    REFERENCES `csgo_stats_dw`.`event` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
   CONSTRAINT `fk_vetoes_fact_match1`
     FOREIGN KEY (`match_id`)
-    REFERENCES `csgo_stats_dw`.`match` (`id`),
+    REFERENCES `csgo_stats_dw`.`match` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
   CONSTRAINT `fk_vetoes_fact_team1`
     FOREIGN KEY (`team_id`)
-    REFERENCES `csgo_stats_dw`.`team` (`id`),
+    REFERENCES `csgo_stats_dw`.`team` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `fk_vetoes_fact_de_map1`
+    FOREIGN KEY (`de_map_id`)
+    REFERENCES `csgo_stats_dw`.`de_map` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
   CONSTRAINT `fk_vetoes_fact_time1`
     FOREIGN KEY (`time_id`)
-    REFERENCES `csgo_stats_dw`.`time` (`id`))
+    REFERENCES `csgo_stats_dw`.`time` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;

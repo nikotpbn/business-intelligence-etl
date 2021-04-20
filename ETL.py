@@ -20,7 +20,7 @@ class StagingArea:
         self.matches = None
         self.teams = None
         self.times = None
-
+        self.vetoes = []
         # Maps variable
         self.maps = [
             (1, 'Cache'),
@@ -34,9 +34,6 @@ class StagingArea:
             (9, 'Vertigo')
         ]
 
-    ####################################################################
-    #################### OBJECT RELATED METHODS ########################
-    ####################################################################
     def config(self):
         print(self.db_config)
         print(self.db_config)
@@ -44,8 +41,9 @@ class StagingArea:
     ####################################################################
     ################## CONNECTION RELATED METHODS ######################
     ####################################################################
+
+    # Open connections
     def open_connection(self):
-        # Create database and data warehouse connections
         try:
             self.db = mysql.connector.connect(**self.db_config)
             self.dw = mysql.connector.connect(**self.dw_config)
@@ -57,6 +55,7 @@ class StagingArea:
             else:
                 print(err)
 
+    # Close connections
     def close_connection(self):
         self.db.close()
         self.dw.close()
@@ -64,7 +63,7 @@ class StagingArea:
     ####################################################################
     #################### DATABASE RELATED METHODS ######################
     ####################################################################
-    # Function to create all tables
+    # Create data warehouse tables
     def create_tables(self):
         print("(Re)Creating tables tables...")
         self.open_connection()
@@ -73,7 +72,7 @@ class StagingArea:
         script_text = file.read()
         cursor.execute(script_text)
 
-    # Function to clean data warehouse
+    # Drop data warehouse tables
     def drop_tables(self):
         print("Dropping tables...")
         self.open_connection()
@@ -82,7 +81,7 @@ class StagingArea:
         cursor.execute(query)
         cursor.close()
 
-    # Function to automatically populate maps
+    # Populate maps (from memory)
     def populate_maps(self):
         print("Populating maps table...")
         self.open_connection()
@@ -109,7 +108,7 @@ class StagingArea:
         self.events = cursor.fetchall()
 
     def load_events(self):
-        print("Loading events...")
+        self.report_quantity(len(self.events), "events")
         self.open_connection()
         cursor = self.dw.cursor()
         for event in self.events:
@@ -121,7 +120,7 @@ class StagingArea:
         cursor.close()
 
     def export_and_transform_players(self):
-        print("Exporting and transforming teams...")
+        print("Exporting and transforming players...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
         stmt = "SELECT DISTINCT players.player_id AS id, \
@@ -136,7 +135,7 @@ class StagingArea:
         cursor.close()
 
     def load_players(self):
-        print("Loading teams...")
+        self.report_quantity(len(self.players), "players")
         self.open_connection()
         cursor = self.dw.cursor()
         for player in self.players:
@@ -162,7 +161,7 @@ class StagingArea:
         cursor.close()
 
     def load_matches(self):
-        print("Loading matches...")
+        self.report_quantity(len(self.matches), "matches")
         self.open_connection()
         cursor = self.dw.cursor()
         for match in self.matches:
@@ -177,13 +176,13 @@ class StagingArea:
         print("Exporting and transforming teams...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = 'SELECT DISTINCT team as name FROM cs_go.players'
+        stmt = 'SELECT DISTINCT TRIM(team) as name FROM cs_go.players;'
         cursor.execute(stmt)
         self.teams = cursor.fetchall()
         cursor.close()
 
     def load_teams(self):
-        print("Loading teams...")
+        self.report_quantity(len(self.teams), "teams")
         self.open_connection()
         cursor = self.dw.cursor()
         pk = 1
@@ -233,7 +232,7 @@ class StagingArea:
             pk = pk + 1
 
     def load_times(self):
-        print("Loading times...")
+        self.report_quantity(len(self.times), "times")
         self.open_connection()
         cursor = self.dw.cursor()
         for time in self.times:
@@ -281,7 +280,7 @@ class StagingArea:
                                 'team_id': team_id})
 
     def load_performances(self):
-        print("Loading performances...")
+        self.report_quantity(len(self.performances), "performances")
         self.open_connection()
         cursor = self.dw.cursor()
         for performance in self.performances:
@@ -296,6 +295,90 @@ class StagingArea:
             cursor.execute(stmt, data)
             self.dw.commit()
         cursor.close()
+
+    def export_and_transform_veto(self):
+        print("Exporting and transforming vetoes...")
+        self.open_connection()
+        cursor = self.db.cursor(dictionary=True)
+        stmt = "SELECT DISTINCT picks.date, picks.team_1, picks.team_2, \
+                 picks.t1_removed_1, picks.t1_removed_2, picks.t1_removed_3, \
+                 picks.t2_removed_1, picks.t2_removed_2, picks.t2_removed_3, \
+                 picks.event_id, picks.match_id \
+                 FROM picks \
+                 INNER JOIN players \
+                    ON players.match_id = picks.match_id"
+        cursor.execute(stmt)
+        vetoes = cursor.fetchall()
+        cursor.close()
+
+        # Transform
+        try:
+            for veto in vetoes:
+                time_split = veto['date'].split("-")
+                year = int(time_split[0])
+                month = int(time_split[1])
+                day = int(time_split[2])
+                time_id = self.get_time_id(year, month, day)
+
+                t1_id = self.get_team_id(veto['team_1'].strip())
+                t1_vetoes = {
+                                '1': self.get_map_id(veto['t1_removed_1'].strip()),
+                                '2': self.get_map_id(veto['t1_removed_2'].strip()),
+                                '3': self.get_map_id(veto['t1_removed_3'].strip())
+                             }
+
+                t2_id = self.get_team_id(veto['team_2'].strip())
+                t2_vetoes = {
+                                '1': self.get_map_id(veto['t2_removed_1'].strip()),
+                                '2': self.get_map_id(veto['t2_removed_2'].strip()),
+                                '3': self.get_map_id(veto['t2_removed_3'].strip())
+                            }
+
+                number = 1
+                for map_id in t1_vetoes:
+                    if t1_vetoes[map_id] is not None:
+                        data = {
+                                    'event_id': veto['event_id'],
+                                    'match_id': veto['match_id'],
+                                    'team_id': t1_id,
+                                    'map_id': t1_vetoes[map_id],
+                                    'time_id': time_id,
+                                    'number': number
+                                }
+                        number += 1
+                        self.vetoes.append(data)
+
+                number = 1
+                for map_id in t2_vetoes:
+                    if t2_vetoes[map_id] is not None:
+                        data = {
+                                    'event_id': veto['event_id'],
+                                    'match_id': veto['match_id'],
+                                    'team_id': t2_id,
+                                    'map_id': t2_vetoes[map_id],
+                                    'time_id': time_id,
+                                    'number': number
+                                }
+                        number += 1
+                        self.vetoes.append(data)
+        except:
+            print(veto['team_1'].strip())
+
+    def load_vetoes(self):
+        self.report_quantity(len(self.vetoes), "vetoes")
+        self.open_connection()
+        cursor = self.dw.cursor()
+        for veto in self.vetoes:
+            stmt = "INSERT INTO vetoes_fact (event_id, match_id, team_id, de_map_id, time_id, number)" \
+                   "VALUES (%s, %s, %s, %s, %s, %s)"
+            data = (veto['event_id'], veto['match_id'], veto['team_id'], veto['map_id'], veto['time_id'], veto['number'])
+            cursor.execute(stmt, data)
+            self.dw.commit()
+        cursor.close()
+
+    def testing(self):
+        self.open_connection()
+
 
     ####################################################################
     ############### AUXILIARY OBJECT RELATED METHODS ###################
@@ -321,9 +404,18 @@ class StagingArea:
         cursor.close()
         return team['id']
 
+    def get_map_id(self, name):
+        for map in self.maps:
+            if map[1] == name:
+                return map[0]
+
     ####################################################################
     #################### AUXILIARY STATCIC METHODS #####################
     ####################################################################
+    @staticmethod
+    def report_quantity(qntty, object_name):
+        print("Loading {} {}...".format(qntty, object_name))
+
     @staticmethod
     def check_semester(month):
         if 1 >= month <= 6:
