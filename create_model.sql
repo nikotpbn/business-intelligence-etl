@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS `csgo_stats_dw`.`event` (
   `city` VARCHAR(45) NULL,
   `country` VARCHAR(45) NULL,
   `region` VARCHAR(45) NULL,
+  `tier` DECIMAL NULL,
   `lan` TINYINT NULL,
   PRIMARY KEY (`id`))
 ENGINE = InnoDB

@@ -70,7 +70,7 @@ class StagingArea:
         cursor = self.dw.cursor()
         file = open('create_model.sql')
         script_text = file.read()
-        cursor.execute(script_text)
+        cursor.execute(script_text, multi=True)
 
     # Drop data warehouse tables
     def drop_tables(self):
@@ -78,7 +78,7 @@ class StagingArea:
         self.open_connection()
         cursor = self.dw.cursor()
         query = "DROP TABLE `performance_fact`, `vetoes_fact`, `event`, `de_map`, `player`, `team`, `time`,`match`;"
-        cursor.execute(query)
+        cursor.execute(query, multi=True)
         cursor.close()
 
     # Populate maps (from memory)
@@ -258,7 +258,7 @@ class StagingArea:
         stmt = "SELECT players.event_id, \
                 players.match_id, \
                 player_id, \
-                team, players.date, kills, deaths, assists, COALESCE(flash_assists,0) AS flash_assists, \
+                TRIM(team) as team, players.date, kills, deaths, assists, COALESCE(flash_assists,0) AS flash_assists, \
                 hs, kddiff, fkdiff, COALESCE(adr,0) as adr, kast, rating \
                 FROM players \
                 INNER JOIN picks \
