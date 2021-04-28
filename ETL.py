@@ -1,6 +1,8 @@
 import datetime as dt
 import mysql.connector
 from mysql.connector import errorcode
+import scrapper
+import json
 
 
 class StagingArea:
@@ -21,6 +23,8 @@ class StagingArea:
         self.teams = None
         self.times = None
         self.vetoes = []
+        self.dict_events = {}
+        self.dict_matches = {}
         # Maps variable
         self.maps = [
             (1, 'Cache'),
@@ -99,11 +103,11 @@ class StagingArea:
         print("Exporting and transforming events...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.event_id AS id, \
-                    players.event_name AS name \
-                    FROM players \
-                    INNER JOIN picks \
-                        ON picks.event_id = players.event_id"
+        stmt = "SELECT DISTINCT players.event_id AS id, players.event_name AS name \
+                FROM players \
+                INNER JOIN picks ON picks.match_id = players.match_id \
+                INNER JOIN results ON results.match_id = players.match_id \
+                ORDER BY id"
         cursor.execute(stmt)
         self.events = cursor.fetchall()
 
@@ -119,17 +123,44 @@ class StagingArea:
             self.dw.commit()
         cursor.close()
 
+    def update_events(self):
+        self.report_quantity(len(self.events), "events")
+        with open('events.json') as json_file:
+            self.dict_events = json.load(json_file)
+        self.open_connection()
+        cursor = self.dw.cursor(dictionary=True)
+        with open('events.json') as json_file:
+            self.dict_events = json.load(json_file)
+        for event in self.events:
+            lan = self.dict_events[str(event['id'])][0]
+            stars = self.dict_events[str(event['id'])][1]
+            tier = self.get_event_tier(event['id'], cursor)
+            stmt = "UPDATE event SET tier = %s, lan = %s, stars = %s WHERE id = %s"
+            data = (tier, lan, stars, event['id'])
+            cursor.execute(stmt, data)
+            self.dw.commit()
+        cursor.close()
+
+    # def load_scrap_events(self):
+    #     self.report_quantity(len(self.events), "events tiers to fill")
+    #     self.open_connection()
+    #     cursor = self.dw.cursor()
+    #     for event in self.events:
+    #         lan = scrapper.scrap_lan(event['id'])
+    #         stmt = f"UPDATE event SET lan = {lan} WHERE id = {event['id']}"
+    #         cursor.execute(stmt)
+    #         self.dw.commit()
+    #     cursor.close()
+
     def export_and_transform_players(self):
         print("Exporting and transforming players...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.player_id AS id, \
-                    players.player_name AS name, \
-                    players.country AS country \
-                    FROM players \
-                    INNER JOIN picks \
-                        ON picks.event_id = players.event_id \
-                    ORDER BY id"
+        stmt = "SELECT DISTINCT players.player_id AS id, players.player_name AS name, players.country AS country \
+                FROM players \
+                INNER JOIN picks ON picks.match_id = players.match_id \
+                INNER JOIN results ON results.match_id = players.match_id \
+                ORDER BY id"
         cursor.execute(stmt)
         self.players = cursor.fetchall()
         cursor.close()
@@ -150,12 +181,11 @@ class StagingArea:
         print("Exporting and transforming matches...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.match_id AS id, \
-                    players.best_of AS best_of \
-                    FROM players \
-                    INNER JOIN picks \
-                    ON picks.event_id = players.event_id \
-                    ORDER BY id, best_of"
+        stmt = "SELECT DISTINCT players.match_id AS id, results.rank_1, results.rank_2, players.best_of AS best_of \
+                FROM players \
+                INNER JOIN picks ON picks.match_id = players.match_id \
+                INNER JOIN results ON results.match_id = players.match_id \
+                ORDER BY id"
         cursor.execute(stmt)
         self.matches = cursor.fetchall()
         cursor.close()
@@ -165,9 +195,10 @@ class StagingArea:
         self.open_connection()
         cursor = self.dw.cursor()
         for match in self.matches:
-            stmt = "INSERT INTO `match` (id, best_of) " \
-                   "VALUES (%s, %s)"
-            data = (match['id'], match['best_of'])
+            tier = self.get_match_tier(match['rank_1'], match['rank_2'])
+            stmt = "INSERT INTO `match` (id, best_of, tier) " \
+                   "VALUES (%s, %s, %s)"
+            data = (match['id'], match['best_of'], tier)
             cursor.execute(stmt, data)
             self.dw.commit()
         cursor.close()
@@ -176,7 +207,10 @@ class StagingArea:
         print("Exporting and transforming teams...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = 'SELECT DISTINCT TRIM(team) as name FROM cs_go.players;'
+        stmt = 'SELECT DISTINCT TRIM(team) as name \
+                FROM players \
+                INNER JOIN picks ON picks.match_id = players.match_id \
+                INNER JOIN results ON results.match_id = players.match_id'
         cursor.execute(stmt)
         self.teams = cursor.fetchall()
         cursor.close()
@@ -199,10 +233,11 @@ class StagingArea:
         print("Exporting and transforming times...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.date FROM players \
-                    INNER JOIN picks \
-                    ON players.event_id = picks.event_id \
-                    ORDER BY date;"
+        stmt = "SELECT DISTINCT players.date \
+                FROM players \
+                INNER JOIN picks ON picks.match_id = players.match_id \
+                INNER JOIN results ON results.match_id = players.match_id \
+                ORDER BY date"
         cursor.execute(stmt)
         self.times = cursor.fetchall()
         cursor.close()
@@ -217,7 +252,8 @@ class StagingArea:
             semester = self.check_semester(month)
             quarter = self.check_quarter(month)
             week_of_month = self.check_week_of_month(day)
-            weekday = dt.datetime(year, month, day).weekday() # Return the day of the week as an integer, where Monday is 0 and Sunday is 6
+            weekday = dt.datetime(year, month,
+                                  day).weekday()  # Return the day of the week as an integer, where Monday is 0 and Sunday is 6
             weekend = self.check_weekend(year, month, day)
 
             time.update({'id': pk,
@@ -255,15 +291,12 @@ class StagingArea:
         print("Exporting and transforming performance facts...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT players.event_id, \
-                players.match_id, \
-                player_id, \
-                TRIM(team) as team, players.date, kills, deaths, assists, COALESCE(flash_assists,0) AS flash_assists, \
+        stmt = "SELECT players.event_id, players.match_id, player_id, \
+                TRIM(team) as team, players.date, kills, deaths, \
                 hs, kddiff, fkdiff, COALESCE(adr,0) as adr, kast, rating \
                 FROM players \
-                INNER JOIN picks \
-                ON players.event_id = picks.event_id \
-                AND players.match_id = picks.match_id"
+                INNER JOIN picks ON picks.match_id = players.match_id \
+                INNER JOIN results ON results.match_id = players.match_id"
         cursor.execute(stmt)
         self.performances = cursor.fetchall()
         cursor.close()
@@ -285,11 +318,11 @@ class StagingArea:
         cursor = self.dw.cursor()
         for performance in self.performances:
             stmt = "INSERT INTO performance_fact (event_id, match_id, team_id, player_id, time_id," \
-                   "kills, deaths, assists, flash_assists, headshots, kddiff, fkdiff, adr, kast, rating)" \
-                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                   "kills, deaths, assists, headshots, kddiff, fkdiff, adr, kast, rating)" \
+                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             data = (performance['event_id'], performance['match_id'], performance['team_id'],
                     performance['player_id'], performance['time_id'], performance['kills'],
-                    performance['deaths'], performance['assists'], performance['flash_assists'],
+                    performance['deaths'], performance['assists'],
                     performance['hs'], performance['kddiff'], performance['fkdiff'],
                     performance['adr'], performance['kast'], performance['rating'])
             cursor.execute(stmt, data)
@@ -301,12 +334,12 @@ class StagingArea:
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
         stmt = "SELECT DISTINCT picks.date, picks.team_1, picks.team_2, \
-                 picks.t1_removed_1, picks.t1_removed_2, picks.t1_removed_3, \
-                 picks.t2_removed_1, picks.t2_removed_2, picks.t2_removed_3, \
-                 picks.event_id, picks.match_id \
-                 FROM picks \
-                 INNER JOIN players \
-                    ON players.match_id = picks.match_id"
+                picks.t1_removed_1, picks.t1_removed_2, picks.t1_removed_3, \
+                picks.t2_removed_1, picks.t2_removed_2, picks.t2_removed_3, \
+                picks.event_id, picks.match_id \
+                FROM picks \
+                INNER JOIN players ON players.match_id = picks.match_id \
+                INNER JOIN results ON results.match_id = picks.match_id"
         cursor.execute(stmt)
         vetoes = cursor.fetchall()
         cursor.close()
@@ -379,6 +412,20 @@ class StagingArea:
     def testing(self):
         self.open_connection()
 
+    ####################################################################
+    ######################## SCRAPPER METHODS ##########################
+    ####################################################################
+    # def scrapper(self):
+    #     print("Scrapping informations from HLTV...")
+    #     for event in self.events:
+    #         match_id, match_stars, event_lan, event_stars = scrapper.scrap_all(event['id'])
+    #         self.dict_matches[match_id] = match_stars
+    #         self.dict_events[event['id']] = [event_lan, event_stars]
+    #     with open('matches.json', 'w') as fp:
+    #         json.dump(self.dict_matches, fp)
+    #     with open('events.json', 'w') as fp:
+    #         json.dump(self.dict_events, fp)
+    #     return dict
 
     ####################################################################
     ############### AUXILIARY OBJECT RELATED METHODS ###################
@@ -408,6 +455,40 @@ class StagingArea:
         for map in self.maps:
             if map[1] == name:
                 return map[0]
+
+    def get_match_tier(self, rank_1, rank_2):
+        rank_avg = (rank_1 + rank_2) / 2
+        if rank_avg < 11:
+            return 1
+        elif 11 <= rank_avg < 21:
+            return 2
+        elif 21 <= rank_avg < 31:
+            return 3
+        elif 31 <= rank_avg < 41:
+            return 4
+        else:
+            return 5
+
+    def get_event_tier(self, event_id, cursor):
+        query = 'SELECT AVG(match.tier) as tier \
+                FROM `match` \
+                INNER JOIN vetoes_fact as vf on `match`.id = vf.match_id \
+                WHERE vf.event_id = {}'.format(event_id)
+        cursor.execute(query)
+        rank_avg = cursor.fetchone()
+        return rank_avg['tier']
+
+    # def make_dict(self):
+    #     self.open_connection()
+    #     cursor = self.db.cursor(dictionary=True)
+    #     query = f'SELECT id, lan, tier FROM events'
+    #     cursor.execute(query)
+    #     events = cursor.fetchall()
+    #     for event in events:
+    #         self.dict_events[event['id']] = [event['lan'], event['tier']]
+    #     with open('events.json', 'w') as fp:
+    #         json.dump(self.dict_events, fp)
+
 
     ####################################################################
     #################### AUXILIARY STATCIC METHODS #####################

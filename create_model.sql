@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS `csgo_stats_dw`.`event` (
   `city` VARCHAR(45) NULL,
   `country` VARCHAR(45) NULL,
   `region` VARCHAR(45) NULL,
-  `tier` DECIMAL NULL,
+  `tier` INT NULL,
+  `stars` DECIMAL(3,3) NULL,
   `lan` TINYINT NULL,
   PRIMARY KEY (`id`))
 ENGINE = InnoDB
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS `csgo_stats_dw`.`match` (
   `id` INT NOT NULL,
   `best_of` INT NOT NULL,
   `tier` INT NULL,
+  `stars` INT NULL,
   PRIMARY KEY (`id`))
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
@@ -116,7 +118,6 @@ CREATE TABLE IF NOT EXISTS `csgo_stats_dw`.`performance_fact` (
   `kills` INT NOT NULL,
   `deaths` INT NOT NULL,
   `assists` INT NOT NULL,
-  `flash_assists` INT NOT NULL,
   `headshots` INT NOT NULL,
   `kddiff` INT NOT NULL,
   `fkdiff` INT NOT NULL,
