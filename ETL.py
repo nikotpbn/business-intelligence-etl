@@ -1,3 +1,5 @@
+import json
+import csv
 import datetime as dt
 import mysql.connector
 from mysql.connector import errorcode
@@ -21,6 +23,7 @@ class StagingArea:
         self.teams = None
         self.times = None
         self.vetoes = []
+        self.regions = []
         # Maps variable
         self.maps = [
             (1, 'Cache'),
@@ -93,17 +96,65 @@ class StagingArea:
         cursor.close()
 
     ####################################################################
+    #################### DATASET RELATED METHODS #######################
+    ####################################################################
+    def load_continent_country(self):
+        with open('datasets/continents-according-to-our-world-in-data.csv') as f:
+            data = csv.reader(f)
+            for index, row in enumerate(data):
+                # 0['Entity', 'Code', 'Year', 'Continent']
+                if index > 0:
+                    data = {
+                        'Entity': row[0],
+                        'Code': row[1],
+                        'Year': row[2],
+                        'Continent': row[3]
+                    }
+                    self.regions.append(data)
+        f.close()
+
+        # for entry in self.regions:
+        #     print(entry)
+
+    def find_continent(self, country):
+        continent = None
+        for entry in self.regions:
+            if entry['Entity'] == country:
+                continent = entry['Continent']
+        return continent
+
+    # TODO: FUNCTION IS NOT NECESSARY, CAN BE REMOVED
+    def check_data_warehouse_players_continent(self):
+        self.open_connection()
+        cursor = self.dw.cursor(dictionary=True)
+        stmt = "SELECT * FROM player"
+        cursor.execute(stmt)
+        players = cursor.fetchall()
+        cursor.close()
+
+        for player in players:
+            continent = self.find_continent(player['country'])
+            print("Name: {}  |  Country: {}  |  Continent: {}".format(player['name'], player['country'], continent))
+
+
+    ####################################################################
     ####################### ETL RELATED METHODS ########################
     ####################################################################
     def export_and_transform_events(self):
         print("Exporting and transforming events...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.event_id AS id, \
-                    players.event_name AS name \
-                    FROM players \
-                    INNER JOIN picks \
-                        ON picks.event_id = players.event_id"
+        stmt = "SELECT DISTINCT \
+                    players.event_id as id, \
+                    TRIM(players.event_name) as name \
+                FROM players \
+                INNER JOIN picks \
+                    ON picks.match_id = players.match_id \
+                    AND picks.event_id = players.event_id \
+                INNER JOIN results \
+                    ON results.match_id = players.match_id \
+                    AND results.event_id = results.event_id \
+                ORDER BY id;"
         cursor.execute(stmt)
         self.events = cursor.fetchall()
 
@@ -123,13 +174,18 @@ class StagingArea:
         print("Exporting and transforming players...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.player_id AS id, \
-                    players.player_name AS name, \
-                    players.country AS country \
-                    FROM players \
-                    INNER JOIN picks \
-                        ON picks.event_id = players.event_id \
-                    ORDER BY id"
+        stmt = "SELECT DISTINCT \
+                    players.player_id AS id, \
+                    TRIM(players.player_name) AS name, \
+                    TRIM(players.country) AS country \
+                FROM players \
+                INNER JOIN picks \
+                    ON picks.match_id = players.match_id \
+                    AND picks.event_id = players.event_id \
+                INNER JOIN results \
+                    ON results.match_id = players.match_id \
+                    AND results.event_id = players.event_id \
+                ORDER BY id;"
         cursor.execute(stmt)
         self.players = cursor.fetchall()
         cursor.close()
@@ -150,12 +206,17 @@ class StagingArea:
         print("Exporting and transforming matches...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.match_id AS id, \
-                    players.best_of AS best_of \
-                    FROM players \
-                    INNER JOIN picks \
-                    ON picks.event_id = players.event_id \
-                    ORDER BY id, best_of"
+        stmt = "SELECT DISTINCT \
+                    players.match_id as id, \
+                    players.best_of as best_of \
+                FROM players \
+                INNER JOIN picks \
+                    ON picks.match_id = players.match_id \
+                    AND picks.event_id = players.event_id \
+                INNER JOIN results \
+                    ON results.match_id = players.match_id \
+                    AND results.event_id = results.event_id \
+                ORDER  BY id;"
         cursor.execute(stmt)
         self.matches = cursor.fetchall()
         cursor.close()
@@ -176,7 +237,15 @@ class StagingArea:
         print("Exporting and transforming teams...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = 'SELECT DISTINCT TRIM(team) as name FROM cs_go.players;'
+        stmt = "SELECT DISTINCT TRIM(players.team) as name \
+                FROM players \
+                   INNER JOIN picks \
+                    ON picks.match_id = players.match_id \
+                    AND picks.event_id = players.event_id \
+                INNER JOIN results \
+                    ON results.match_id = players.match_id \
+                    AND results.event_id = results.event_id \
+                ORDER BY name;"
         cursor.execute(stmt)
         self.teams = cursor.fetchall()
         cursor.close()
@@ -199,10 +268,16 @@ class StagingArea:
         print("Exporting and transforming times...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT players.date FROM players \
-                    INNER JOIN picks \
-                    ON players.event_id = picks.event_id \
-                    ORDER BY date;"
+        stmt = "SELECT DISTINCT \
+                    players.date \
+                FROM players \
+                   INNER JOIN picks \
+                    ON picks.match_id = players.match_id \
+                    AND picks.event_id = players.event_id \
+                INNER JOIN results \
+                    ON results.match_id = players.match_id \
+                    AND results.event_id = results.event_id \
+                ORDER BY players.date;"
         cursor.execute(stmt)
         self.times = cursor.fetchall()
         cursor.close()
@@ -255,15 +330,22 @@ class StagingArea:
         print("Exporting and transforming performance facts...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT players.event_id, \
-                players.match_id, \
-                player_id, \
-                team, players.date, kills, deaths, assists, COALESCE(flash_assists,0) AS flash_assists, \
-                hs, kddiff, fkdiff, COALESCE(adr,0) as adr, kast, rating \
+        stmt = "SELECT DISTINCT \
+                   players.event_id, \
+                   players.match_id, \
+                   players.player_id, \
+                   TRIM(players.team) as team, \
+                   players.date, \
+                   kills, deaths, assists, COALESCE(flash_assists,0) AS flash_assists, \
+                   hs, kddiff, fkdiff, COALESCE(adr,0) as adr, kast, rating \
                 FROM players \
                 INNER JOIN picks \
-                ON players.event_id = picks.event_id \
-                AND players.match_id = picks.match_id"
+                    ON picks.match_id = players.match_id \
+                    AND picks.event_id=  players.event_id \
+                INNER JOIN results \
+                    ON results.match_id = players.match_id \
+                    AND results.event_id = players.event_id;"
+
         cursor.execute(stmt)
         self.performances = cursor.fetchall()
         cursor.close()
@@ -300,69 +382,77 @@ class StagingArea:
         print("Exporting and transforming vetoes...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT picks.date, picks.team_1, picks.team_2, \
-                 picks.t1_removed_1, picks.t1_removed_2, picks.t1_removed_3, \
-                 picks.t2_removed_1, picks.t2_removed_2, picks.t2_removed_3, \
-                 picks.event_id, picks.match_id \
-                 FROM picks \
-                 INNER JOIN players \
-                    ON players.match_id = picks.match_id"
+        stmt = "SELECT DISTINCT \
+                    picks.event_id, \
+                    picks.match_id, \
+                    picks.date, TRIM(picks.team_1) AS team_1, TRIM(picks.team_2) AS team_2, \
+                    TRIM(picks.t1_removed_1) AS t1_removed_1, \
+                    TRIM(picks.t1_removed_2) AS t1_removed_2, \
+                    TRIM(picks.t1_removed_3) AS t1_removed_3, \
+                    TRIM(picks.t2_removed_1) AS t2_removed_1, \
+                    TRIM(picks.t2_removed_2) AS t2_removed_2, \
+                    TRIM(picks.t2_removed_3) AS t2_removed_3 \
+                FROM picks \
+                INNER JOIN players \
+                    ON players.match_id = picks.match_id \
+                    AND players.event_id = picks.event_id \
+                INNER JOIN results \
+                    ON results.match_id = picks.match_id \
+                    AND results.event_id = picks.event_id \
+                ORDER BY picks.date;"
         cursor.execute(stmt)
         vetoes = cursor.fetchall()
         cursor.close()
 
         # Transform
-        try:
-            for veto in vetoes:
-                time_split = veto['date'].split("-")
-                year = int(time_split[0])
-                month = int(time_split[1])
-                day = int(time_split[2])
-                time_id = self.get_time_id(year, month, day)
+        for veto in vetoes:
+            time_split = veto['date'].split("-")
+            year = int(time_split[0])
+            month = int(time_split[1])
+            day = int(time_split[2])
+            time_id = self.get_time_id(year, month, day)
 
-                t1_id = self.get_team_id(veto['team_1'].strip())
-                t1_vetoes = {
-                                '1': self.get_map_id(veto['t1_removed_1'].strip()),
-                                '2': self.get_map_id(veto['t1_removed_2'].strip()),
-                                '3': self.get_map_id(veto['t1_removed_3'].strip())
-                             }
+            t1_id = self.get_team_id(veto['team_1'])
+            t1_vetoes = {
+                            '1': self.get_map_id(veto['t1_removed_1'].strip()),
+                            '2': self.get_map_id(veto['t1_removed_2'].strip()),
+                            '3': self.get_map_id(veto['t1_removed_3'].strip())
+                         }
 
-                t2_id = self.get_team_id(veto['team_2'].strip())
-                t2_vetoes = {
-                                '1': self.get_map_id(veto['t2_removed_1'].strip()),
-                                '2': self.get_map_id(veto['t2_removed_2'].strip()),
-                                '3': self.get_map_id(veto['t2_removed_3'].strip())
+            t2_id = self.get_team_id(veto['team_2'])
+            t2_vetoes = {
+                            '1': self.get_map_id(veto['t2_removed_1'].strip()),
+                            '2': self.get_map_id(veto['t2_removed_2'].strip()),
+                            '3': self.get_map_id(veto['t2_removed_3'].strip())
+                        }
+
+            number = 1
+            for map_id in t1_vetoes:
+                if t1_vetoes[map_id] is not None:
+                    data = {
+                                'event_id': veto['event_id'],
+                                'match_id': veto['match_id'],
+                                'team_id': t1_id,
+                                'map_id': t1_vetoes[map_id],
+                                'time_id': time_id,
+                                'number': number
                             }
+                    number += 1
+                    self.vetoes.append(data)
 
-                number = 1
-                for map_id in t1_vetoes:
-                    if t1_vetoes[map_id] is not None:
-                        data = {
-                                    'event_id': veto['event_id'],
-                                    'match_id': veto['match_id'],
-                                    'team_id': t1_id,
-                                    'map_id': t1_vetoes[map_id],
-                                    'time_id': time_id,
-                                    'number': number
-                                }
-                        number += 1
-                        self.vetoes.append(data)
-
-                number = 1
-                for map_id in t2_vetoes:
-                    if t2_vetoes[map_id] is not None:
-                        data = {
-                                    'event_id': veto['event_id'],
-                                    'match_id': veto['match_id'],
-                                    'team_id': t2_id,
-                                    'map_id': t2_vetoes[map_id],
-                                    'time_id': time_id,
-                                    'number': number
-                                }
-                        number += 1
-                        self.vetoes.append(data)
-        except:
-            print(veto['team_1'].strip())
+            number = 1
+            for map_id in t2_vetoes:
+                if t2_vetoes[map_id] is not None:
+                    data = {
+                                'event_id': veto['event_id'],
+                                'match_id': veto['match_id'],
+                                'team_id': t2_id,
+                                'map_id': t2_vetoes[map_id],
+                                'time_id': time_id,
+                                'number': number
+                            }
+                    number += 1
+                    self.vetoes.append(data)
 
     def load_vetoes(self):
         self.report_quantity(len(self.vetoes), "vetoes")

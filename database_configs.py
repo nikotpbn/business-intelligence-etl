@@ -5,7 +5,7 @@ niko = {
         'host': "localhost",
         'user': "root",
         'password': "951847",
-        'database': "cs_go",
+        'database': "data_test",
         'connect_timeout': 2000,
         'buffered': True,
 

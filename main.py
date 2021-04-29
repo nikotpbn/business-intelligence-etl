@@ -13,9 +13,9 @@ def main(**kwargs):
         sa.create_tables()
         exit(1)
 
-    # Maps ETL
+    # # Maps ETL
     # sa.populate_maps()
-
+    #
     # # Events ETL
     # start_time = time.time()
     # sa.export_and_transform_events()
@@ -36,21 +36,28 @@ def main(**kwargs):
     # sa.load_matches()
     # if kwargs['DEBUG']:
     #     print('Finished MATCHES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
-
+    #
     # # Teams ETL
     # start_time = time.time()
     # sa.export_and_transform_teams()
     # sa.load_teams()
     # if kwargs['DEBUG']:
     #     print('Finished TEAMS ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
-
+    #
     # # Time ETL
     # start_time = time.time()
     # sa.export_and_transform_time()
     # sa.load_times()
     # if kwargs['DEBUG']:
     #     print('Finished TIMES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
-
+    #
+    # # Veto ETL
+    # start_time = time.time()
+    # sa.export_and_transform_veto()
+    # sa.load_vetoes()
+    # if kwargs['DEBUG']:
+    #     print('Finished VETOES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
+    #
     # # Performance ETL
     # start_time = time.time()
     # sa.export_and_transform_performance()
@@ -58,15 +65,11 @@ def main(**kwargs):
     # if kwargs['DEBUG']:
     #     print('Finished PERFORMANCES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
 
-    # Veto ETL
-    start_time = time.time()
-    sa.export_and_transform_veto()
-    sa.load_vetoes()
-    if kwargs['DEBUG']:
-        print('Finished VETOES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
+    sa.load_continent_country()
+    sa.check_data_warehouse_players_continent()
 
 
 # DATABASE_CONFIG: 1. Niko | 2.Lucas
 # DEBUG: True | False  (to print  ETL process duration time and number of instances on loading)
-# SCRATCH: True | False (start a project from zero)
+# SCRATCH: True | False (TRUE = start a project from zero)
 main(DATABASE_CONFIG=1, DEBUG=True, SCRATCH=False)
