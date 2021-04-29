@@ -73,7 +73,7 @@ class StagingArea:
         cursor = self.dw.cursor()
         file = open('create_model.sql')
         script_text = file.read()
-        cursor.execute(script_text)
+        cursor.execute(script_text, multi=True)
 
     # Drop data warehouse tables
     def drop_tables(self):
@@ -81,7 +81,7 @@ class StagingArea:
         self.open_connection()
         cursor = self.dw.cursor()
         query = "DROP TABLE `performance_fact`, `vetoes_fact`, `event`, `de_map`, `player`, `team`, `time`,`match`;"
-        cursor.execute(query)
+        cursor.execute(query, multi=True)
         cursor.close()
 
     # Populate maps (from memory)
@@ -134,7 +134,8 @@ class StagingArea:
 
         for player in players:
             continent = self.find_continent(player['country'])
-            print("Name: {}  |  Country: {}  |  Continent: {}".format(player['name'], player['country'], continent))
+            if continent is None:
+                print("Name: {}  |  Country: {}  |  Continent: {}".format(player['name'], player['country'], continent))
 
 
     ####################################################################

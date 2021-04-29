@@ -28,7 +28,7 @@ lucas = {
             'host': "localhost",
             'user': "lucas",
             'password': "",
-            'database': "csgo_stats",
+            'database': "cs_go",
             'charset': 'utf8',
             'use_unicode': True,
             'connect_timeout': 2000,
