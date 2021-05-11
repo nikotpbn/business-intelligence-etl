@@ -1,7 +1,7 @@
 import datetime as dt
 import mysql.connector
 from mysql.connector import errorcode
-import scrapper
+# import scrapper
 import json
 import csv
 
@@ -25,9 +25,10 @@ class StagingArea:
         self.times = None
         self.vetoes = []
         self.dict_events = {}
-        self.dict_matches = {}
+        # self.dict_matches = {}
         self.regions = []
-        # Maps variable
+
+        # Maps
         self.maps = [
             (1, 'Cache'),
             (2, 'Cobblestone'),
@@ -40,6 +41,7 @@ class StagingArea:
             (9, 'Vertigo')
         ]
 
+    # Print database configurations
     def config(self):
         print(self.db_config)
         print(self.db_config)
@@ -101,6 +103,7 @@ class StagingArea:
     ####################################################################
     #################### DATASET RELATED METHODS #######################
     ####################################################################
+    # Load country per continent list into object variable
     def load_continent_country(self):
         with open('datasets/continents-according-to-our-world-in-data.csv') as f:
             data = csv.reader(f)
@@ -116,9 +119,7 @@ class StagingArea:
                     self.regions.append(data)
         f.close()
 
-        # for entry in self.regions:
-        #     print(entry)
-
+    # Find a country continent by name
     def find_continent(self, country):
         continent = None
         for entry in self.regions:
@@ -176,8 +177,6 @@ class StagingArea:
 
     def update_events(self):
         self.report_quantity(len(self.events), "events")
-        with open('events.json') as json_file:
-            self.dict_events = json.load(json_file)
         self.open_connection()
         cursor = self.dw.cursor(dictionary=True)
         with open('events.json') as json_file:
@@ -239,17 +238,18 @@ class StagingArea:
         print("Exporting and transforming matches...")
         self.open_connection()
         cursor = self.db.cursor(dictionary=True)
-        stmt = "SELECT DISTINCT \
-                    players.match_id as id, \
-                    players.best_of as best_of \
+        stmt = "SELECT DISTINCT players.match_id AS id, \
+                results.rank_1, \
+                results.rank_2, \
+                players.best_of AS best_of \
                 FROM players \
                 INNER JOIN picks \
                     ON picks.match_id = players.match_id \
                     AND picks.event_id = players.event_id \
-                INNER JOIN results \
+                INNER JOIN results  \
                     ON results.match_id = players.match_id \
-                    AND results.event_id = results.event_id \
-                ORDER  BY id;"
+                    AND results.event_id = players.event_id \
+                ORDER BY id"
         cursor.execute(stmt)
         self.matches = cursor.fetchall()
         cursor.close()
@@ -448,16 +448,16 @@ class StagingArea:
 
             t1_id = self.get_team_id(veto['team_1'])
             t1_vetoes = {
-                            '1': self.get_map_id(veto['t1_removed_1'].strip()),
-                            '2': self.get_map_id(veto['t1_removed_2'].strip()),
-                            '3': self.get_map_id(veto['t1_removed_3'].strip())
+                            '1': self.get_map_id(veto['t1_removed_1']),
+                            '2': self.get_map_id(veto['t1_removed_2']),
+                            '3': self.get_map_id(veto['t1_removed_3'])
                          }
 
             t2_id = self.get_team_id(veto['team_2'])
             t2_vetoes = {
-                            '1': self.get_map_id(veto['t2_removed_1'].strip()),
-                            '2': self.get_map_id(veto['t2_removed_2'].strip()),
-                            '3': self.get_map_id(veto['t2_removed_3'].strip())
+                            '1': self.get_map_id(veto['t2_removed_1']),
+                            '2': self.get_map_id(veto['t2_removed_2']),
+                            '3': self.get_map_id(veto['t2_removed_3'])
                         }
 
             number = 1
