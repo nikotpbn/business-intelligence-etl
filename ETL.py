@@ -24,6 +24,7 @@ class StagingArea:
         self.teams = None
         self.times = None
         self.vetoes = []
+        self.performances = []
         self.dict_events = {}
         # self.dict_matches = {}
         self.regions = []
@@ -41,13 +42,8 @@ class StagingArea:
             (9, 'Vertigo')
         ]
 
-    # Print database configurations
-    def config(self):
-        print(self.db_config)
-        print(self.db_config)
-
     ####################################################################
-    ################## CONNECTION RELATED METHODS ######################
+    #################### DATABASE RELATED METHODS ######################
     ####################################################################
 
     # Open connections
@@ -68,15 +64,12 @@ class StagingArea:
         self.db.close()
         self.dw.close()
 
-    ####################################################################
-    #################### DATABASE RELATED METHODS ######################
-    ####################################################################
     # Create data warehouse tables
     def create_tables(self):
         print("(Re)Creating tables tables...")
         self.open_connection()
         cursor = self.dw.cursor()
-        file = open('create_model.sql')
+        file = open('databases/datawarehouse/create_model.sql')
         script_text = file.read()
         cursor.execute(script_text, multi=True)
 
@@ -85,19 +78,8 @@ class StagingArea:
         print("Dropping tables...")
         self.open_connection()
         cursor = self.dw.cursor()
-        query = "DROP TABLE `performance_fact`, `vetoes_fact`, `event`, `de_map`, `player`, `team`, `time`,`match`;"
+        query = "DROP TABLE `performance`, `veto`, `event`, `map`, `player`, `team`, `time`,`match`;"
         cursor.execute(query, multi=True)
-        cursor.close()
-
-    # Populate maps (from memory)
-    def populate_maps(self):
-        print("Populating maps table...")
-        self.open_connection()
-        cursor = self.dw.cursor()
-        stmt = "INSERT INTO de_map (id, name) " \
-               "VALUES (%s, %s)"
-        cursor.executemany(stmt, self.maps)
-        self.dw.commit()
         cursor.close()
 
     ####################################################################
@@ -145,6 +127,17 @@ class StagingArea:
     ####################################################################
     ####################### ETL RELATED METHODS ########################
     ####################################################################
+    # Populate maps (from memory)
+    def populate_maps(self):
+        print("Populating map table...")
+        self.open_connection()
+        cursor = self.dw.cursor()
+        stmt = "INSERT INTO `map` (id, name) " \
+               "VALUES (%s, %s)"
+        cursor.executemany(stmt, self.maps)
+        self.dw.commit()
+        cursor.close()
+
     def export_and_transform_events(self):
         print("Exporting and transforming events...")
         self.open_connection()
@@ -162,13 +155,14 @@ class StagingArea:
                 ORDER BY id;"
         cursor.execute(stmt)
         self.events = cursor.fetchall()
+        cursor.close()
 
     def load_events(self):
         self.report_quantity(len(self.events), "events")
         self.open_connection()
         cursor = self.dw.cursor()
         for event in self.events:
-            stmt = "INSERT INTO event (id, name) " \
+            stmt = "INSERT INTO `event` (id, name) " \
                    "VALUES (%s, %s)"
             data = (event['id'], event['name'])
             cursor.execute(stmt, data)
@@ -176,7 +170,7 @@ class StagingArea:
         cursor.close()
 
     def update_events(self):
-        self.report_quantity(len(self.events), "events")
+        print("Updating events...(requirements)")
         self.open_connection()
         cursor = self.dw.cursor(dictionary=True)
         with open('events.json') as json_file:
@@ -185,7 +179,7 @@ class StagingArea:
             lan = self.dict_events[str(event['id'])][0]
             stars = self.dict_events[str(event['id'])][1]
             tier = self.get_event_tier(event['id'], cursor)
-            stmt = "UPDATE event SET tier = %s, lan = %s, stars = %s WHERE id = %s"
+            stmt = "UPDATE `event` SET tier = %s, lan = %s, stars = %s WHERE id = %s"
             data = (tier, lan, stars, event['id'])
             cursor.execute(stmt, data)
             self.dw.commit()
@@ -226,10 +220,12 @@ class StagingArea:
         self.report_quantity(len(self.players), "players")
         self.open_connection()
         cursor = self.dw.cursor()
+        self.load_continent_country()
         for player in self.players:
-            stmt = "INSERT INTO player (id, name, country) " \
-                   "VALUES (%s, %s, %s)"
-            data = (player['id'], player['name'], player['country'])
+            continent = self.find_continent(player['country'])
+            stmt = "INSERT INTO `player` (id, name, country, region) " \
+                   "VALUES (%s, %s, %s, %s)"
+            data = (player['id'], player['name'], player['country'], continent)
             cursor.execute(stmt, data)
             self.dw.commit()
         cursor.close()
@@ -288,14 +284,12 @@ class StagingArea:
         self.report_quantity(len(self.teams), "teams")
         self.open_connection()
         cursor = self.dw.cursor()
-        pk = 1
-        for team in self.teams:
-            stmt = "INSERT INTO team (id, name)" \
+        for pk, team in enumerate(self.teams, start=1):
+            stmt = "INSERT INTO `team` (id, name)" \
                    "VALUES (%s, %s)"
             data = (pk, team['name'])
             cursor.execute(stmt, data)
             self.dw.commit()
-            pk += 1
         cursor.close()
 
     def export_and_transform_time(self):
@@ -317,8 +311,7 @@ class StagingArea:
         cursor.close()
 
         # Transform data
-        pk = 1
-        for time in self.times:
+        for pk, time in enumerate(self.times, start=1):
             time_split = time['date'].split("-")
             year = int(time_split[0])
             month = int(time_split[1])
@@ -338,14 +331,13 @@ class StagingArea:
                          'week_of_month': week_of_month,
                          'weekday': weekday,
                          'weekend': weekend})
-            pk = pk + 1
 
     def load_times(self):
         self.report_quantity(len(self.times), "times")
         self.open_connection()
         cursor = self.dw.cursor()
         for time in self.times:
-            stmt = "INSERT INTO time (id, year, month, day, semester, quarter, week_of_month, weekend, weekday)" \
+            stmt = "INSERT INTO `time` (id, year, month, day, semester, quarter, week_of_month, weekend, weekday)" \
                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
             data = (time['id'],
                     time['year'],
@@ -399,11 +391,11 @@ class StagingArea:
         self.report_quantity(len(self.performances), "performances")
         self.open_connection()
         cursor = self.dw.cursor()
-        for performance in self.performances:
-            stmt = "INSERT INTO performance_fact (event_id, match_id, team_id, player_id, time_id," \
-                   "kills, deaths, assists, headshots, kddiff, fkdiff, adr, kast, rating)" \
-                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-            data = (performance['event_id'], performance['match_id'], performance['team_id'],
+        for id, performance in enumerate(self.performances, start=1):
+            stmt = "INSERT INTO `performance` (id, event_id, match_id, team_id, player_id, time_id," \
+                   "kills, deaths, assists, hs, kd_diff, fk_diff, adr, kast, rating)" \
+                   "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            data = (id, performance['event_id'], performance['match_id'], performance['team_id'],
                     performance['player_id'], performance['time_id'], performance['kills'],
                     performance['deaths'], performance['assists'],
                     performance['hs'], performance['kddiff'], performance['fkdiff'],
@@ -460,8 +452,7 @@ class StagingArea:
                             '3': self.get_map_id(veto['t2_removed_3'])
                         }
 
-            number = 1
-            for map_id in t1_vetoes:
+            for number, map_id in enumerate(t1_vetoes, start=1):
                 if t1_vetoes[map_id] is not None:
                     data = {
                                 'event_id': veto['event_id'],
@@ -471,11 +462,9 @@ class StagingArea:
                                 'time_id': time_id,
                                 'number': number
                             }
-                    number += 1
                     self.vetoes.append(data)
 
-            number = 1
-            for map_id in t2_vetoes:
+            for number, map_id in enumerate(t2_vetoes, start=1):
                 if t2_vetoes[map_id] is not None:
                     data = {
                                 'event_id': veto['event_id'],
@@ -485,23 +474,19 @@ class StagingArea:
                                 'time_id': time_id,
                                 'number': number
                             }
-                    number += 1
                     self.vetoes.append(data)
 
     def load_vetoes(self):
         self.report_quantity(len(self.vetoes), "vetoes")
         self.open_connection()
         cursor = self.dw.cursor()
-        for veto in self.vetoes:
-            stmt = "INSERT INTO vetoes_fact (event_id, match_id, team_id, de_map_id, time_id, number)" \
-                   "VALUES (%s, %s, %s, %s, %s, %s)"
-            data = (veto['event_id'], veto['match_id'], veto['team_id'], veto['map_id'], veto['time_id'], veto['number'])
+        for id, veto in  enumerate(self.vetoes, start=1):
+            stmt = "INSERT INTO `veto` (id, event_id, match_id, team_id, map_id, time_id, number)" \
+                   "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            data = (id, veto['event_id'], veto['match_id'], veto['team_id'], veto['map_id'], veto['time_id'], veto['number'])
             cursor.execute(stmt, data)
             self.dw.commit()
         cursor.close()
-
-    def testing(self):
-        self.open_connection()
 
     ####################################################################
     ######################## SCRAPPER METHODS ##########################
@@ -521,6 +506,11 @@ class StagingArea:
     ####################################################################
     ############### AUXILIARY OBJECT RELATED METHODS ###################
     ####################################################################
+    # Print database configurations
+    def config(self):
+        print(self.db_config)
+        print(self.db_config)
+
     def get_time_id(self, year, month, day):
         self.open_connection()
         cursor = self.dw.cursor(dictionary=True)
@@ -547,23 +537,10 @@ class StagingArea:
             if map[1] == name:
                 return map[0]
 
-    def get_match_tier(self, rank_1, rank_2):
-        rank_avg = (rank_1 + rank_2) / 2
-        if rank_avg < 11:
-            return 1
-        elif 11 <= rank_avg < 21:
-            return 2
-        elif 21 <= rank_avg < 31:
-            return 3
-        elif 31 <= rank_avg < 41:
-            return 4
-        else:
-            return 5
-
     def get_event_tier(self, event_id, cursor):
         query = 'SELECT AVG(match.tier) as tier \
                 FROM `match` \
-                INNER JOIN vetoes_fact as vf on `match`.id = vf.match_id \
+                INNER JOIN veto as vf on `match`.id = vf.match_id \
                 WHERE vf.event_id = {}'.format(event_id)
         cursor.execute(query)
         rank_avg = cursor.fetchone()
@@ -624,3 +601,17 @@ class StagingArea:
             return 0
         else:
             return 1
+
+    @staticmethod
+    def get_match_tier(rank_1, rank_2):
+        rank_avg = (rank_1 + rank_2) / 2
+        if rank_avg < 11:
+            return 1
+        elif 11 <= rank_avg < 21:
+            return 2
+        elif 21 <= rank_avg < 31:
+            return 3
+        elif 31 <= rank_avg < 41:
+            return 4
+        else:
+            return 5

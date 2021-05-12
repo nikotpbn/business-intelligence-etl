@@ -1,15 +1,14 @@
 from ETL import StagingArea
-import database_configs
+from databases import configs
 import time
 
 
 def main(**kwargs):
-    sa = StagingArea(database_configs.niko) if kwargs['DATABASE_CONFIG'] == 1 else StagingArea(database_configs.lucas)
+    sa = StagingArea(configs.niko) if kwargs['DATABASE_CONFIG'] == 1 else StagingArea(configs.lucas)
 
     if kwargs['SCRATCH']:
         # Clean data warehouse and exit program
         sa.drop_tables()
-        # Create tables
         sa.create_tables()
         exit(1)
 
@@ -27,14 +26,9 @@ def main(**kwargs):
     start_time = time.time()
     sa.export_and_transform_events()
     sa.load_events()
+    sa.update_events()
     if kwargs['DEBUG']:
         print('Finished EVENTS ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
-
-    # # Scrapper ETL for EVENT and MATCH (do not run)
-    # start_time = time.time()
-    # sa.scrapper()
-    # if kwargs['DEBUG']:
-    #     print('Finished SCRAPPER ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
 
     # Players ETL
     start_time = time.time()
@@ -70,12 +64,6 @@ def main(**kwargs):
     sa.load_performances()
     if kwargs['DEBUG']:
         print('Finished PERFORMANCES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
-
-    # Events Update ETL
-    start_time = time.time()
-    sa.update_events()
-    if kwargs['DEBUG']:
-        print('Finished EVENTS UPDATE ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
 
 
 # DATABASE_CONFIG: 1. Niko | 2.Lucas
