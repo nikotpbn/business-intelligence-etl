@@ -65,6 +65,8 @@ def main(**kwargs):
     if kwargs['DEBUG']:
         print('Finished PERFORMANCES ETL with success in: ', round(time.time() - start_time, 2), ' seconds')
 
+    sa.count_team_map_veto()
+
 
 # DATABASE_CONFIG: 1. Niko | 2.Lucas
 # DEBUG: True | False  (to print  ETL process duration time and number of instances on loading)

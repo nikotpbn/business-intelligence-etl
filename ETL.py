@@ -123,7 +123,6 @@ class StagingArea:
             if continent is None:
                 print("Name: {}  |  Country: {}  |  Continent: {}".format(player['name'], player['country'], continent))
 
-
     ####################################################################
     ####################### ETL RELATED METHODS ########################
     ####################################################################
@@ -319,7 +318,8 @@ class StagingArea:
             semester = self.check_semester(month)
             quarter = self.check_quarter(month)
             week_of_month = self.check_week_of_month(day)
-            weekday = dt.datetime(year, month, day).weekday() # Return the day of the week as an integer, where Monday is 0 and Sunday is 6
+            weekday = dt.datetime(year, month,
+                                  day).weekday()  # Return the day of the week as an integer, where Monday is 0 and Sunday is 6
             weekend = self.check_weekend(year, month, day)
 
             time.update({'id': pk,
@@ -440,53 +440,140 @@ class StagingArea:
 
             t1_id = self.get_team_id(veto['team_1'])
             t1_vetoes = {
-                            '1': self.get_map_id(veto['t1_removed_1']),
-                            '2': self.get_map_id(veto['t1_removed_2']),
-                            '3': self.get_map_id(veto['t1_removed_3'])
-                         }
+                '1': self.get_map_id(veto['t1_removed_1']),
+                '2': self.get_map_id(veto['t1_removed_2']),
+                '3': self.get_map_id(veto['t1_removed_3'])
+            }
 
             t2_id = self.get_team_id(veto['team_2'])
             t2_vetoes = {
-                            '1': self.get_map_id(veto['t2_removed_1']),
-                            '2': self.get_map_id(veto['t2_removed_2']),
-                            '3': self.get_map_id(veto['t2_removed_3'])
-                        }
+                '1': self.get_map_id(veto['t2_removed_1']),
+                '2': self.get_map_id(veto['t2_removed_2']),
+                '3': self.get_map_id(veto['t2_removed_3'])
+            }
 
             for number, map_id in enumerate(t1_vetoes, start=1):
                 if t1_vetoes[map_id] is not None:
                     data = {
-                                'event_id': veto['event_id'],
-                                'match_id': veto['match_id'],
-                                'team_id': t1_id,
-                                'map_id': t1_vetoes[map_id],
-                                'time_id': time_id,
-                                'number': number
-                            }
+                        'event_id': veto['event_id'],
+                        'match_id': veto['match_id'],
+                        'team_id': t1_id,
+                        'map_id': t1_vetoes[map_id],
+                        'time_id': time_id,
+                        'number': number
+                    }
                     self.vetoes.append(data)
 
             for number, map_id in enumerate(t2_vetoes, start=1):
                 if t2_vetoes[map_id] is not None:
                     data = {
-                                'event_id': veto['event_id'],
-                                'match_id': veto['match_id'],
-                                'team_id': t2_id,
-                                'map_id': t2_vetoes[map_id],
-                                'time_id': time_id,
-                                'number': number
-                            }
+                        'event_id': veto['event_id'],
+                        'match_id': veto['match_id'],
+                        'team_id': t2_id,
+                        'map_id': t2_vetoes[map_id],
+                        'time_id': time_id,
+                        'number': number
+                    }
                     self.vetoes.append(data)
 
     def load_vetoes(self):
         self.report_quantity(len(self.vetoes), "vetoes")
         self.open_connection()
         cursor = self.dw.cursor()
-        for id, veto in  enumerate(self.vetoes, start=1):
+        for id, veto in enumerate(self.vetoes, start=1):
             stmt = "INSERT INTO `veto` (id, event_id, match_id, team_id, map_id, time_id, number)" \
                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            data = (id, veto['event_id'], veto['match_id'], veto['team_id'], veto['map_id'], veto['time_id'], veto['number'])
+            data = (
+            id, veto['event_id'], veto['match_id'], veto['team_id'], veto['map_id'], veto['time_id'], veto['number'])
             cursor.execute(stmt, data)
             self.dw.commit()
         cursor.close()
+
+    ####################################################################
+    ######################## RP RELATED METHODS ########################
+    ####################################################################
+    def count_team_map_veto(self):
+        data = []
+        labels = ['team_id', 'best_of', 'number' 'map_id']
+        self.open_connection()
+        cursor = self.dw.cursor(dictionary=True)
+
+        # TODO: This part should be with self.teams when running the complete script
+        stmt = "SELECT * FROM `team`"
+        cursor.execute(stmt)
+        self.teams = cursor.fetchall()
+
+        # Iterate through teams
+        # for team in self.teams:
+        # Get the las X best of 1 matches of a team
+        stmt = "SELECT match_id, `match`.best_of, time_id from veto \
+                INNER JOIN `match` \
+                ON `veto`.match_id = `match`.id  \
+                WHERE team_id = 999 \
+                AND `match`.best_of = 1 \
+                GROUP BY match_id, time_id \
+                ORDER BY time_id DESC \
+                LIMIT 20;"
+        cursor.execute(stmt)
+        bo1 = cursor.fetchall()
+
+        # Get the las X best of 3 matches of a team
+        stmt = "SELECT match_id, `match`.best_of, time_id from veto \
+                INNER JOIN `match` \
+                ON `veto`.match_id = `match`.id  \
+                WHERE team_id = 999 \
+                AND `match`.best_of = 3 \
+                GROUP BY match_id, time_id \
+                ORDER BY time_id DESC \
+                LIMIT 20;"
+        cursor.execute(stmt)
+        bo3 = cursor.fetchall()
+
+        if (len(bo1) > 0) and (len(bo3) > 0):
+            data.append({'team': 999, 'bo1': bo1, 'bo3': bo3})
+        else:
+            data.append({'team': None, 'bo1': None, 'bo3': None})
+
+            # if (len(bo1) < 3) or (len(bo3) < 3):
+            #     data.append({'team': team, 'bo1': None, 'bo3': None})
+            # else:
+            #     data.append({'team': team, 'bo1': bo1, 'bo3': bo3})
+
+        rp_data = []
+        for entry in data:
+            if entry['bo1'] is not None:
+                for match in entry['bo1']:
+                    self.query_match_veto_data(cursor, match['match_id'], entry['team'], 1, rp_data)
+
+                for match in entry['bo3']:
+                    self.query_match_veto_data(cursor, match['match_id'], entry['team'], 3, rp_data)
+
+        file = open("rp_data.csv", "w")
+        writer = csv.writer(file)
+        for entry in rp_data:
+            print(entry)
+            writer.writerow([entry['best_of'], entry['veto_order'], entry['match_tier'], entry['stars'], entry['lan'], entry['map']])
+        file.close()
+
+    def query_match_veto_data(self, cursor, match_id, team_id, best_of, rp_data):
+        stmt = "SELECT match_id, team_id, number, `match`.tier AS match_tier, `event`.lan, `event`.stars,  map_id FROM veto \
+                INNER JOIN `match` \
+                ON veto.match_id = `match`.id \
+                INNER JOIN `event` \
+                ON veto.event_id = `event`.id \
+                WHERE match_id = {} \
+                AND team_id = {};".format(match_id, team_id)
+        cursor.execute(stmt)
+        vetoes = cursor.fetchall()
+
+        for entry in vetoes:
+            rp_data.append({'team': entry['team_id'],
+                            'best_of': best_of,
+                            'veto_order': entry['number'],
+                            'match_tier': entry['match_tier'],
+                            'stars': entry['stars'],
+                            'lan': entry['lan'],
+                            'map': entry['map_id']})
 
     ####################################################################
     ######################## SCRAPPER METHODS ##########################
@@ -556,7 +643,6 @@ class StagingArea:
     #         self.dict_events[event['id']] = [event['lan'], event['tier']]
     #     with open('events.json', 'w') as fp:
     #         json.dump(self.dict_events, fp)
-
 
     ####################################################################
     #################### AUXILIARY STATCIC METHODS #####################
